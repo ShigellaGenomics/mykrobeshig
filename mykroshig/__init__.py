@@ -8,7 +8,3 @@ Shigella sonnei and Shigella flexneri, producing tabulated genotyping results.
 __version__ = '1.0.0'
 __author__ = 'Jane Hawkey'
 __license__ = 'GPL-3.0'
-
-from .parser import main, SPECIES_CONFIG
-
-__all__ = ['main', 'SPECIES_CONFIG']

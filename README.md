@@ -1,4 +1,4 @@
-# mykroshig
+# MykroShig
 
 This package parses Mykrobe predict results for *Shigella sonnei* and *Shigella flexneri*. It is adapted from the [sonneityping tool](https://github.com/katholt/sonneityping) originally developed for *Shigella sonnei*.
 
@@ -44,22 +44,23 @@ mykrobe predict --sample SAMPLE_NAME --species flexneri --format json --out SAMP
 * For Oxford Nanopore reads, add the flag `--ont` to your command.
 * For full details on all Mykrobe options, please see [the Mykrobe documentation](https://github.com/Mykrobe-tools/mykrobe).
 
-### Parse Mykrobe output
+### Parse Mykrobe output with MykroShig
 
 Once Mykrobe results are generated, use `mykroshig` to parse them:
 
 **Input**
 * JSON files output from `mykrobe predict` (`--jsons`)
-* Species to parse: either `sonnei` or `flexneri` (`--species`)
 
 **Output**
 * tab-delimited file with one row per genome detailing genotype and QRDR mutations (`--prefix`)
 
-**Example commands**
+**Example command**
 
 ```bash
-mykroshig --jsons mykrobe_results/*.json --species flexneri --prefix results_mykrobe_parsed
+mykroshig --jsons mykrobe_results/*.json --prefix results_mykrobe_parsed
 ```
+
+MykroShig automatically detects whether samples are *S. flexneri* or *S. sonnei* from the Mykrobe output and uses the appropriate genotyping configuration.
 
 
 ## Example output
@@ -71,9 +72,9 @@ The output table will be named *prefix*_predictResults.tsv, and will be in tab-d
 
 Explanation of columns in the output:
 * **genome**: sample ID
-* **species**: species call from Mykrobe (*S. flexneri* or unknown)
-* **final genotype**: final genotype call from Mykrobe, using the S. flexneri genotyping scheme
-* **name**: human readable alias for genotype, where available
+* **species**: species call from Mykrobe (*S. flexneri*, *S. sonnei*, or unknown)
+* **final genotype**: final genotype call from Mykrobe
+* **name**: human readable alias for genotype. Pulled from the data/alleles_*.txt files. Only used for *S. sonnei*.
 * **confidence**: measure of confidence in the final genotype call, summarising read support across all levels in the hierarchy (lineage, clade, subclade, etc)
   * _strong_ - high quality calls (quality of '1' reported by Mykrobe) for ALL levels;
   * _moderate_ - reduced confidence for ONE node (Mykrobe quality of '0.5', but still with >50% read support for the marker allele), high quality calls for ALL OTHERS;

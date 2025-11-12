@@ -19,25 +19,8 @@
 import json
 import sys
 import csv
+from importlib import resources
 from argparse import ArgumentParser
-
-# Species-specific configuration
-SPECIES_CONFIG = {
-    'flexneri': {
-        'species_name': 'Shigella_flexneri',
-        'display_name': 'S. flexneri',
-        'qrdr_mutations': ['parC_S80I', 'gyrA_S83L', 'gyrA_S83A', 'gyrA_D87G', 'gyrA_D87N', 'gyrA_D87Y'],
-        'coverage_threshold': 80,
-        'phylo_group': 'Ecoli_Shigella',
-    },
-    'sonnei': {
-        'species_name': 'Shigella_sonnei',
-        'display_name': 'S. sonnei',
-        'qrdr_mutations': ['parC_S80I', 'parC_S80R', 'gyrA_S83L', 'gyrA_S83A', 'gyrA_D87G', 'gyrA_D87N', 'gyrA_D87Y'],
-        'coverage_threshold': 80,
-        'phylo_group': 'Ecoli_Shigella',
-    }
-}
 
 
 def get_arguments():
@@ -45,11 +28,36 @@ def get_arguments():
 
     parser.add_argument('--jsons', required=True, nargs='+', help='JSON files output from mykrobe predict')
     parser.add_argument('--prefix', required=True, help='prefix for output files')
-    parser.add_argument('--species', required=True, choices=['sonnei', 'flexneri'],
-                        help='Species to parse - either sonnei or flexneri')
-    parser.add_argument('--alleles', required=False, help='Optional alleles file for sonnei genotyping')
-
     return parser.parse_args()
+
+
+def get_paramters_for_spp(spp_call):
+    """
+    Determine the appropriate parameters based on the species call from Mykrobe.
+    If it's not one of these species, return None (will be processed as "Unknown")
+    """
+    # Map Mykrobe species names to config keys
+    species_config = {
+    'Shigella_flexneri': {
+        'species_name': 'Shigella_flexneri',
+        'display_name': 'S. flexneri',
+        'coverage_threshold': 80,
+        'phylo_group': 'Ecoli_Shigella',
+        'qrdr_mutations': ["parC_S80I", "gyrA_S83L", "gyrA_S83A", "gyrA_D87G", "gyrA_D87N", "gyrA_D87Y"]
+    },
+    'Shigella_sonnei': {
+        'species_name': 'Shigella_sonnei',
+        'display_name': 'S. sonnei',
+        'coverage_threshold': 90,
+        'phylo_group': 'Ecoli_Shigella',
+        'qrdr_mutations': ["parC_S80I", "gyrA_S83L", "gyrA_S83A", "gyrA_D87G", "gyrA_D87N", "gyrA_D87Y"]
+    }
+}
+    if spp_call in species_config.keys():
+        return species_config[spp_call]
+    else:
+        # If unknown or unrecognized species
+        return None
 
 
 def extract_qrdr_info(genome_data, genome_name, spp_call, config):
@@ -98,7 +106,7 @@ def extract_qrdr_info(genome_data, genome_name, spp_call, config):
     return qrdr_out_dict
 
 
-def inspect_calls(full_lineage_data):
+def inspect_calls(full_lineage_data, spp):
     """Inspect genotype calls and determine the best genotype with confidence scores"""
     genotype_details = full_lineage_data['calls_summary']
     genotype_list = list(genotype_details.keys())
@@ -125,13 +133,15 @@ def inspect_calls(full_lineage_data):
     final_markers = []
     
     for level in best_calls.keys():
+        # regardless of the call, get info 
         call_details = full_lineage_data['calls'][best_genotype][level]
-        
+        # check that there is something there
         if call_details:
+            # need to do this weird thing to grab the info without knowing the key name
             call_details = call_details[list(call_details.keys())[0]]
             ref = call_details['info']['coverage']['reference']['median_depth']
             alt = call_details['info']['coverage']['alternate']['median_depth']
-            
+            # calculate percent support for marker
             try:
                 percent_support = alt / (alt + ref)
             except ZeroDivisionError:
@@ -139,17 +149,27 @@ def inspect_calls(full_lineage_data):
             
             marker_string = level + ' (' + str(best_calls[level]) + '; ' + str(alt) + '/' + str(ref) + ')'
             final_markers.append(marker_string)
+        # if the value is null, just report 0 (indicates that no SNV detected, either ref or alt?)
         else:
-            lowest_within_genotype_percents[0] = level
-            marker_string = level + ' (0)'
-            poorly_supported_markers.append(marker_string)
-            final_markers.append(marker_string)
-
-        if best_calls[level] < 1:
+            # note we do not have a markers for lineage5.1 in sonnei so don't report this as 0
+            if level != 'lineage5.1' and spp == 'Shigella_sonnei':
+                lowest_within_genotype_percents[0] = level
+                marker_string = level + ' (0)'
+                poorly_supported_markers.append(marker_string)
+                final_markers.append(marker_string)
+        # if call is 1 then that is fine, count to determine confidence later
+        # if call is 0.5, then get info
+        # if call is 0, there will be no info in the calls section, so just report 0s everywhere
+        if best_calls[level] < 1 or (best_calls[level] < 1 and level != 'lineage5.1' and spp == 'Shigella_sonnei'):
+            # then it must be a 0 or a 0.5
+            # report the value (0/0.5), and also the depth compared to the reference
             lowest_within_genotype_percents[percent_support] = level
             poorly_supported_markers.append(marker_string)
 
-    # Determine confidence level
+    # determining final confidence is based ONLY on the actual genotype, not incongruent genotype calls
+    # if there is a lineage5.1 in the call, then we need to remove one of the 0s in best_calls_vals
+    if 'lineage5.1' in best_calls.keys() and spp == 'Shigella_sonnei':
+        best_calls_vals.remove(0)
     if best_calls_vals.count(0) == 0 and best_calls_vals.count(0.5) == 0:
         confidence = 'strong'
         lowest_support_val = ''
@@ -163,10 +183,11 @@ def inspect_calls(full_lineage_data):
         confidence = 'weak'
         lowest_support_val = round(min(lowest_within_genotype_percents.keys()), 3)
 
-    # Handle additional incongruent markers
+    # make a list of all possible quality issues (incongruent markers, or not confident calls within the best geno)
     non_matching_markers = []
     non_matching_supports = []
-    
+    # we now want to report any additional markers that aren't congruent with our best genotype
+    #ie if 3.6.1 is the best genotype, but we also have a 3.7.29 call, we need to report the 3.7 and 3.29 markers as incongruent
     if len(genotype_list) > 1:
         genotype_list.remove(best_genotype)
         for genotype in genotype_list:
@@ -193,23 +214,24 @@ def inspect_calls(full_lineage_data):
     return best_genotype, confidence, lowest_support_val, poorly_supported_markers, max_non_matching, non_matching_markers, final_markers
 
 
-def extract_lineage_info(lineage_data, genome_name, config):
+def extract_lineage_info(lineage_data, genome_name, config, sonnei_name_dict):
     """Extract lineage and species information"""
     spp_data = lineage_data['species']
     spp_call = list(spp_data.keys())[0]
     phylo_grp_data = lineage_data['phylo_group']
     phylo_grp_call = list(phylo_grp_data.keys())[0]
     
-    # if spp is unknown, then this is not the target species
-    if spp_call == "Unknown":
+    # if config is None, then this is not a match to either S. flex or S. sonnei
+    if not config:
         if phylo_grp_call != 'Unknown':
             phylo_grp_percentage = phylo_grp_data[phylo_grp_call]['percent_coverage']
         else:
             phylo_grp_percentage = 'NA'
         out_dict = {
             'genome': genome_name, 
-            'species': f'not {config["display_name"]}', 
+            'species': f'not {config["display_name"]}',
             'final genotype': 'NA',
+            'name': 'NA',
             'confidence': 'NA',
             'phylogroup_coverage': phylo_grp_percentage,
             'species_coverage': 'NA',
@@ -221,16 +243,19 @@ def extract_lineage_info(lineage_data, genome_name, config):
         }
         return out_dict, spp_call
     else:
-        # if it is the target species, then get the percentage
+        # if it is the target species, then get the percent coverage
         spp_percentage = spp_data[config['species_name']]["percent_coverage"]
         phylo_grp_percentage = phylo_grp_data[config['phylo_group']]['percent_coverage']
         
-        # if the percentage is below threshold, then exit this function
+        # if the percentage is below threshold, then don't parse any further
+        # but we call this as 'no match to sonnei or flexneri', as it is
+        # Ecoli/Shigella, just not a high enough match to the species we expect
         if spp_percentage < config['coverage_threshold']:
             out_dict = {
                 'genome': genome_name, 
-                'species': f'not {config["display_name"]}', 
+                'species': f'no match to S. sonnei or S. flexneri', 
                 'final genotype': 'NA',
+                'name': 'NA',
                 'confidence': 'NA',
                 'phylogroup_coverage': phylo_grp_percentage,
                 'species_coverage': spp_percentage,
@@ -242,7 +267,7 @@ def extract_lineage_info(lineage_data, genome_name, config):
             }
             return out_dict, "Unknown"
 
-    # Continue with target species
+    # Otherwise continue if it's one of sonnei or flexneri
     spp_percentage = spp_data[config['species_name']]["percent_coverage"]
     phylo_grp_percentage = phylo_grp_data[config['phylo_group']]['percent_coverage']
     lineage_out_dict = {'genome': genome_name}
@@ -254,6 +279,7 @@ def extract_lineage_info(lineage_data, genome_name, config):
             'genome': genome_name, 
             'species': config['display_name'], 
             'final genotype': 'uncalled',
+            'name': 'NA',
             'confidence': 'NA',
             'phylogroup_coverage': phylo_grp_percentage,
             'species_coverage': spp_percentage,
@@ -268,6 +294,7 @@ def extract_lineage_info(lineage_data, genome_name, config):
     # if there are no calls, populate with none
     if len(genotype_calls) == 0:
         lineage_out_dict['final genotype'] = 'uncalled'
+        lineage_out_dict['name'] = 'NA'
         lineage_out_dict['confidence'] = 'NA'
         lineage_out_dict['lowest support for genotype marker'] = ''
         lineage_out_dict['poorly supported markers'] = ''
@@ -276,7 +303,7 @@ def extract_lineage_info(lineage_data, genome_name, config):
         lineage_out_dict['node support'] = ''
     else:
         # inspect calls for genotype(s)
-        best_genotype, confidence, lowest_support_val, poorly_supported_markers, non_matching_support, non_matching_markers, final_markers = inspect_calls(lineage_data['lineage'])
+        best_genotype, confidence, lowest_support_val, poorly_supported_markers, non_matching_support, non_matching_markers, final_markers = inspect_calls(lineage_data['lineage'], spp_call)
         lineage_out_dict['final genotype'] = best_genotype
         lineage_out_dict['confidence'] = confidence
         lineage_out_dict['lowest support for genotype marker'] = lowest_support_val
@@ -284,6 +311,10 @@ def extract_lineage_info(lineage_data, genome_name, config):
         lineage_out_dict['max support for additional markers'] = non_matching_support
         lineage_out_dict['additional markers'] = '; '.join(non_matching_markers)
         lineage_out_dict['node support'] = '; '.join(final_markers)
+        if spp_call == "Shigella_sonnei":
+            lineage_out_dict['name'] = sonnei_name_dict[best_genotype]
+        else:
+            lineage_out_dict['name'] = '-'
     
     # add species info
     lineage_out_dict['species'] = config['display_name']
@@ -295,7 +326,14 @@ def extract_lineage_info(lineage_data, genome_name, config):
 
 def main():
     args = get_arguments()
-    config = SPECIES_CONFIG[args.species]
+
+    # create sonnei_name_dict, key=mykrobe lineage name, value=sonnei human readable name
+    # only used for sonnei genotypes
+    sonnei_name_dict = {}
+    with resources.open_text('mykroshig.data', 'alleles_sonnei.txt') as lineage_names:
+        for line in lineage_names:
+            fields = line.strip().split('\t')
+            sonnei_name_dict[fields[4]] = fields[3]
     
     results_data = []
 
@@ -316,17 +354,27 @@ def main():
         genome_data = myk_result[genome_name]
         lineage_data = genome_data["phylogenetics"]
         
-        lineage_info, spp_call = extract_lineage_info(lineage_data, genome_name, config)
-        genome_qrdr_info = extract_qrdr_info(genome_data, genome_name, spp_call, config)
+        # Extract species call first
+        spp_data = lineage_data['species']
+        spp_call = list(spp_data.keys())[0]
+        
+        # Auto-detect species from Mykrobe output
+        spp_config = get_paramters_for_spp(spp_call)
+        
+        lineage_info, spp_call_returned = extract_lineage_info(lineage_data, genome_name, spp_config, sonnei_name_dict)
+        genome_qrdr_info = extract_qrdr_info(genome_data, genome_name, spp_call_returned, spp_config)
         combined_info = {**lineage_info, **genome_qrdr_info}
         results_data.append(combined_info)
 
-    # Define the column order for output (use species-specific mutations)
+    
+    # Define the columns
     base_columns = [
-        "genome", "species", "final genotype", "confidence", 
+        "genome", "species", "final genotype", "name", "confidence", 
         "num QRDR"
     ]
-    mutation_columns = config['qrdr_mutations']
+
+    qrdr_cols = ["parC_S80I", "gyrA_S83L", "gyrA_S83A", "gyrA_D87G", "gyrA_D87N", "gyrA_D87Y"]
+
     coverage_columns = [
         "phylogroup_coverage", "species_coverage", 
         "lowest support for genotype marker", 
@@ -334,7 +382,8 @@ def main():
         "additional markers", "node support"
     ]
     
-    columns = base_columns + mutation_columns + coverage_columns
+    # define the column order for the output
+    columns = base_columns + qrdr_cols + coverage_columns
 
     # Write results to TSV file
     output_filename = args.prefix + "_predictResults.tsv"
