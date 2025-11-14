@@ -322,7 +322,10 @@ def extract_lineage_info(lineage_data, genome_name, config, sonnei_name_dict):
         lineage_out_dict['additional markers'] = '; '.join(non_matching_markers)
         lineage_out_dict['node support'] = '; '.join(final_markers)
         if spp_call == "Shigella_sonnei":
-            lineage_out_dict['name'] = sonnei_name_dict[best_genotype]
+            try:
+                lineage_out_dict['name'] = sonnei_name_dict[best_genotype]
+            except KeyError:
+                lineage_out_dict['name'] = '-'
         else:
             lineage_out_dict['name'] = '-'
     
