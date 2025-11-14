@@ -63,7 +63,15 @@ def get_paramters_for_spp(spp_call):
 def extract_qrdr_info(genome_data, genome_name, spp_call, config):
     """Extract QRDR mutation information for the genome"""
     qrdr_out_dict = {}
-    qrdr_possible = config['qrdr_mutations']
+    if config:
+        qrdr_possible = config['qrdr_mutations']
+    else:
+        qrdr_possible = ["parC_S80I", "gyrA_S83L", "gyrA_S83A", "gyrA_D87G", "gyrA_D87N", "gyrA_D87Y"]
+        qrdr_out_dict['genome'] = genome_name
+        for allele in qrdr_possible:
+            qrdr_out_dict[allele] = 'NA'
+        qrdr_out_dict['num QRDR'] = 'NA'
+        return qrdr_out_dict
 
     # can only extract qrdr info if sample matches the species, otherwise set 'NA' for all calls
     if spp_call == config['species_name']:
@@ -225,11 +233,13 @@ def extract_lineage_info(lineage_data, genome_name, config, sonnei_name_dict):
     if not config:
         if phylo_grp_call != 'Unknown':
             phylo_grp_percentage = phylo_grp_data[phylo_grp_call]['percent_coverage']
+            species_val = 'Phylogroup ' + phylo_grp_call
         else:
             phylo_grp_percentage = 'NA'
+            species_val = 'Phylogroup unknown, no species detected'
         out_dict = {
             'genome': genome_name, 
-            'species': f'not {config["display_name"]}',
+            'species': species_val,
             'final genotype': 'NA',
             'name': 'NA',
             'confidence': 'NA',
