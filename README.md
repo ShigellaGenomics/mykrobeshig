@@ -40,7 +40,7 @@ You can check what version of the scheme is currently loaded in your Mykrobe ins
 mykrobe panels describe
 ```
 
-### Run mykrobe predict on each genome (Illumina reads, nanopore reads, etc)
+### Run `mykrobe predict` on each genome
 
 Example command (using Illumina reads):
 ```bash
