@@ -18,7 +18,13 @@ cd mykroshig
 pip install .
 ```
 
-## Usage
+## Quickstart
+
+```bash
+mykroshig --jsons mykrobe_results/*.json --prefix results_mykrobe_parsed
+```
+
+## Usage (including running Mykrobe)
 
 ### Install Mykrobe
 First, install Mykrobe (v0.9.0+) as per the instructions on the [Mykrobe github](https://github.com/Mykrobe-tools/mykrobe).
@@ -46,41 +52,39 @@ mykrobe predict --sample SAMPLE_NAME --species flexneri --format json --out SAMP
 
 ### Parse Mykrobe output with MykroShig
 
-Once Mykrobe results are generated, use `mykroshig` to parse them:
+Once Mykrobe results are generated, use `mykroshig` to parse them. MykroShig automatically detects whether samples have been typed using the *S. flexneri* or *S. sonnei* schemes from the Mykrobe output.
 
-**Input**
-* JSON files output from `mykrobe predict` (`--jsons`)
-
-**Output**
-* tab-delimited file with one row per genome detailing genotype and QRDR mutations (`--prefix`)
-
-**Example command**
+**Arguments**
+* `--jsons`: JSON files output from `mykrobe predict`
+* `--prefix`: prefix for output file
+* `--force`: If you used `--force` with your Mykrobe call, to enforce a genotype call even when the species and phylogroup calls are not above the internal Mykrobe thresholds, you can force the parser to output this forced genotype for you. Otherwise, genomes with no phylogroup or no species Mykrobe calls will be skipped
 
 ```bash
 mykroshig --jsons mykrobe_results/*.json --prefix results_mykrobe_parsed
 ```
 
-MykroShig automatically detects whether samples are *S. flexneri* or *S. sonnei* from the Mykrobe output and uses the appropriate genotyping configuration.
-
-
-## Example output
-The output table will be named *prefix*_predictResults.tsv, and will be in tab-delimited format:
-
-| genome     | species   | final genotype | name      | confidence        | num QRDR | parC_S80I | gyrA_S83L | gyrA_S83A | gyrA_D87G | gyrA_D87N | gyrA_D87Y | lowest support for genotype marker | poorly supported markers      | max support for additional markers | additional markers         | node support                                                                                                                    |
-|------------|-----------|----------------|-----------|-------------------|----------|-----------|-----------|-----------|-----------|-----------|-----------|------------------------------------|-------------------------------|------------------------------------|----------------------------|---------------------------------------------------------------------------------------------------------------------------------|
-| sampleA | S.flexneri | 1.1.1        | Example_Type      | strong            | 2        | 1         | 1         | 0         | 0         | 0         | 0         |                                    |                               |                                    |                            | lineage1 (1; 97/0); lineage1.1 (1; 120/0); lineage1.1.1 (1; 91/0)                                   |
+## Output
+The output table will be named *prefix*_predictResults.tsv, and will be in tab-delimited format.
 
 Explanation of columns in the output:
 * **genome**: sample ID
-* **species**: species call from Mykrobe (*S. flexneri*, *S. sonnei*, or unknown)
+* **species**: species call, one of:
+  * *S. flexneri* - if `species coverage` is >85.5
+  * *S. sonnei* - if `species coverage` is >90
+  * 'Unknown E. coli/Shigella' - if `species coverage` not met, but Mykrobe determines it belongs to `Ecoli_Shigella` genus, then it is likely an E. coli or Shigella genome but not one with a matching genotyping scheme
+  * 'Not E. coli/Shigella' - Mykrobe was unable to detect the *uidA* gene, therefore this genome is unlikely to be *E. coli* or *Shigella*
+  * 'forced call' - if `--force` provided, then no species is entered here and 'forced call' is used instead
 * **final genotype**: final genotype call from Mykrobe
 * **name**: human readable alias for genotype. Pulled from the data/alleles_*.txt files. Only used for *S. sonnei*.
+* **scheme**: scheme used for typing the genome in Mykrobe (one of sonnei or flexneri)
 * **confidence**: measure of confidence in the final genotype call, summarising read support across all levels in the hierarchy (lineage, clade, subclade, etc)
   * _strong_ - high quality calls (quality of '1' reported by Mykrobe) for ALL levels;
   * _moderate_ - reduced confidence for ONE node (Mykrobe quality of '0.5', but still with >50% read support for the marker allele), high quality calls for ALL OTHERS;
   * _weak_ - low quality for one or more nodes (Mykrobe quality of '0.5' and <50% read support OR Mykrobe quality of '0').
 * **num QRDR**: Total number of mutations detected in the quinolone-resistance determining regions (QRDR) of genes _gyrA_ and _parC_
 * **parC_S80I, gyrA_S83L, gyrA_S83A, gyrA_D87G, gyrA_D87N, gyrA_D87Y**: calls for each individual QRDR mutation. 0 indicates mutation is absent, 1 indicates mutation is present.
+* **phylogroup_coverage**: Percent coverage to the *uidA* marker for the E. coli/Shigella grouping, as detected by Mykrobe.
+* **species_coverage**: Percent coverage to the species markers for either *S. sonnei* or *S. flexneri*, as detected by Mykrobe. Determines the call in `species` column for the output, based on the thresholds outlined above.
 * **lowest support for genotype marker**: For any markers in the final genotype call that do not have a Mykrobe quality of '1', this column reports the percentage of reads supporting the marker allele at the most poorly supported marker
 * **poorly supported markers**: Lists any markers in the final genotype call that do not have Mykrobe quality of '1'. Markers are separated by ';', values in brackets represent the quality call from Mykrobe, followed by the read depth at the alternate / reference alleles.
 * **max support for additional markers**: For any markers detected that are incongruent with the final genotype call, this column reports the percentage of reads supporting the marker allele at the best supported additional marker.
@@ -88,7 +92,7 @@ Explanation of columns in the output:
 * **node support**: A list of all markers in the final genotype call with their Mykrobe quality calls (1, 0.5, or 0) and the read depths at the marker allele / reference allele.
 
 ### Unexpected results
-As recombination patterns may vary in *S. flexneri*, if you see anything reported in the "additional markers" column, it is worth investigating further whether you have contaminated sequence data (which would produce low-quality calls with low read support at additional markers) or genuine recombination/mixed infections. In such cases it may also be illuminating to investigate the Mykrobe output file for further information.
+As recombination patterns may vary in either *S. flexneri* or *S. sonnei*, if you see anything reported in the "additional markers" column, it is worth investigating further whether you have contaminated sequence data (which would produce low-quality calls with low read support at additional markers) or genuine recombination/mixed infections. In such cases it may also be illuminating to investigate the original Mykrobe output file for further information.
 
 ## License
 

@@ -17,6 +17,7 @@
 #     along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 import json
+import re
 import sys
 import csv
 from importlib import resources
@@ -28,6 +29,7 @@ def get_arguments():
 
     parser.add_argument('--jsons', required=True, nargs='+', help='JSON files output from mykrobe predict')
     parser.add_argument('--prefix', required=True, help='prefix for output files')
+    parser.add_argument('--force', required=False, action='store_true', help='If you have used --force with Mykrobe to get a lineage call despite species mapping failing, use that same logic here. Lineage will be reported even though species failed.')
     return parser.parse_args()
 
 
@@ -39,14 +41,14 @@ def get_paramters_for_spp(spp_call):
     # Map Mykrobe species names to config keys
     species_config = {
     'Shigella_flexneri': {
-        'species_name': 'Shigella_flexneri',
+        'scheme': 'flexneri',
         'display_name': 'S. flexneri',
-        'coverage_threshold': 80,
+        'coverage_threshold': 85.5,
         'phylo_group': 'Ecoli_Shigella',
         'qrdr_mutations': ["parC_S80I", "gyrA_S83L", "gyrA_S83A", "gyrA_D87G", "gyrA_D87N", "gyrA_D87Y"]
     },
     'Shigella_sonnei': {
-        'species_name': 'Shigella_sonnei',
+        'scheme': 'sonnei',
         'display_name': 'S. sonnei',
         'coverage_threshold': 90,
         'phylo_group': 'Ecoli_Shigella',
@@ -59,6 +61,24 @@ def get_paramters_for_spp(spp_call):
         # If unknown or unrecognized species
         return None
 
+
+def determine_scheme(genome_data):
+
+    """Determine which genotyping scheme was used based on the probe sets. Returns the species name of the scheme, or None if undetermined."""
+    probe_sets = genome_data["probe_sets"]
+    flex_pattern = re.compile(r'flexneri\..+\.fa\.gz$')
+    sonnei_pattern = re.compile(r'sonnei\..+\.fa\.gz$')
+
+    flex_count = sum(1 for f in probe_sets if flex_pattern.search(f))
+    sonnei_count = sum(1 for f in probe_sets if sonnei_pattern.search(f))
+    
+    if sonnei_count >= 1:
+        return "sonnei"
+    elif flex_count >= 1:
+        return "flexneri"
+    else:
+        return None
+    
 
 def extract_qrdr_info(genome_data, genome_name, spp_call, config):
     """Extract QRDR mutation information for the genome"""
@@ -74,21 +94,21 @@ def extract_qrdr_info(genome_data, genome_name, spp_call, config):
         return qrdr_out_dict
 
     # can only extract qrdr info if sample matches the species, otherwise set 'NA' for all calls
-    if spp_call == config['species_name']:
-        try:
-            qrdr_data = genome_data["susceptibility"]["ciprofloxacin"]
-        except KeyError:
-            qrdr_out_dict['genome'] = genome_name
-            for allele in qrdr_possible:
-                qrdr_out_dict[allele] = 'NA'
-            qrdr_out_dict['num QRDR'] = 'NA'
-            return qrdr_out_dict
-    else:
+    #if spp_call == config['species_name']:
+    try:
+        qrdr_data = genome_data["susceptibility"]["ciprofloxacin"]
+    except KeyError:
         qrdr_out_dict['genome'] = genome_name
         for allele in qrdr_possible:
             qrdr_out_dict[allele] = 'NA'
         qrdr_out_dict['num QRDR'] = 'NA'
         return qrdr_out_dict
+    #else:
+    #    qrdr_out_dict['genome'] = genome_name
+    #    for allele in qrdr_possible:
+    #        qrdr_out_dict[allele] = 'NA'
+    #    qrdr_out_dict['num QRDR'] = 'NA'
+    #    return qrdr_out_dict
 
     # set up the list of calls in this genome
     qrdr_calls = []
@@ -222,84 +242,80 @@ def inspect_calls(full_lineage_data, spp):
     return best_genotype, confidence, lowest_support_val, poorly_supported_markers, max_non_matching, non_matching_markers, final_markers
 
 
-def extract_lineage_info(lineage_data, genome_name, config, sonnei_name_dict):
+def phylogroup_no_match(phylo_grp_call, phylo_grp_data, genome_name, scheme):
+    """Create output dictionary for genomes that do not match the Ecoli/Shigella phylogroup"""
+    if phylo_grp_call != 'Unknown':
+        phylo_grp_percentage = phylo_grp_data[phylo_grp_call]['percent_coverage']
+        species_val = 'Phylogroup ' + phylo_grp_call
+    else:
+        phylo_grp_percentage = 'NA'
+        species_val = 'Not E. coli/Shigella'
+    
+    # create the output dictionary
+    out_dict = {
+        'genome': genome_name, 
+        'species': species_val,
+        'final genotype': 'NA',
+        'name': 'NA',
+        'scheme': scheme,
+        'confidence': 'NA',
+        'phylogroup_coverage': phylo_grp_percentage,
+        'species_coverage': 'NA',
+        'lowest support for genotype marker': '', 
+        'poorly supported markers': '', 
+        'node support': '', 
+        'max support for additional markers': '', 
+        'additional markers': ''
+    }
+    return out_dict
+
+
+def extract_lineage_info(lineage_data, genome_name, config, sonnei_name_dict, force=False):
     """Extract lineage and species information"""
+    
     spp_data = lineage_data['species']
     spp_call = list(spp_data.keys())[0]
     phylo_grp_data = lineage_data['phylo_group']
-    phylo_grp_call = list(phylo_grp_data.keys())[0]
     
-    # if config is None, then this is not a match to either S. flex or S. sonnei
-    if not config:
-        if phylo_grp_call != 'Unknown':
-            phylo_grp_percentage = phylo_grp_data[phylo_grp_call]['percent_coverage']
-            species_val = 'Phylogroup ' + phylo_grp_call
-        else:
-            phylo_grp_percentage = 'NA'
-            species_val = 'Phylogroup unknown, no species detected'
+    # grab the percentages for species and phylogroup
+    if not force:
+        spp_percentage = spp_data[spp_call]["percent_coverage"]
+        phylo_grp_percentage = phylo_grp_data['Ecoli_Shigella']['percent_coverage']
+    # if we're forcing, set these to -1
+    else:
+        spp_percentage = -1
+        phylo_grp_percentage = -1
+
+    
+    # if the percentage is below threshold, then don't parse any further (if we aren't forcing a call)
+    # but we call this as 'below threshold for species', as it is
+    # Ecoli/Shigella, just not a high enough match to the species we expect
+    if spp_percentage < config['coverage_threshold'] and not force:
         out_dict = {
             'genome': genome_name, 
-            'species': species_val,
+            'species': 'Unknown E. coli/Shigella', 
             'final genotype': 'NA',
             'name': 'NA',
+            'scheme': config['scheme'],
             'confidence': 'NA',
             'phylogroup_coverage': phylo_grp_percentage,
-            'species_coverage': 'NA',
+            'species_coverage': spp_percentage,
             'lowest support for genotype marker': '', 
             'poorly supported markers': '', 
             'node support': '', 
             'max support for additional markers': '', 
             'additional markers': ''
         }
-        return out_dict, spp_call
-    else:
-        # if it is the target species, then get the percent coverage
-        spp_percentage = spp_data[config['species_name']]["percent_coverage"]
-        phylo_grp_percentage = phylo_grp_data[config['phylo_group']]['percent_coverage']
-        
-        # if the percentage is below threshold, then don't parse any further
-        # but we call this as 'no match to sonnei or flexneri', as it is
-        # Ecoli/Shigella, just not a high enough match to the species we expect
-        if spp_percentage < config['coverage_threshold']:
-            out_dict = {
-                'genome': genome_name, 
-                'species': f'no match to S. sonnei or S. flexneri', 
-                'final genotype': 'NA',
-                'name': 'NA',
-                'confidence': 'NA',
-                'phylogroup_coverage': phylo_grp_percentage,
-                'species_coverage': spp_percentage,
-                'lowest support for genotype marker': '', 
-                'poorly supported markers': '', 
-                'node support': '', 
-                'max support for additional markers': '', 
-                'additional markers': ''
-            }
-            return out_dict, "Unknown"
+        return out_dict, "Unknown"
 
     # Otherwise continue if it's one of sonnei or flexneri
-    spp_percentage = spp_data[config['species_name']]["percent_coverage"]
-    phylo_grp_percentage = phylo_grp_data[config['phylo_group']]['percent_coverage']
+    # also continue if we're using 'force', even if below threshold
     lineage_out_dict = {'genome': genome_name}
 
     try:
         genotype_calls = lineage_data['lineage']['lineage']
     except KeyError:
-        out_dict = {
-            'genome': genome_name, 
-            'species': config['display_name'], 
-            'final genotype': 'uncalled',
-            'name': 'NA',
-            'confidence': 'NA',
-            'phylogroup_coverage': phylo_grp_percentage,
-            'species_coverage': spp_percentage,
-            'lowest support for genotype marker': '', 
-            'poorly supported markers': '', 
-            'max support for additional markers': '', 
-            'additional markers': '', 
-            'node support': ''
-        }
-        return out_dict, spp_call
+        genotype_calls = []
     
     # if there are no calls, populate with none
     if len(genotype_calls) == 0:
@@ -329,8 +345,13 @@ def extract_lineage_info(lineage_data, genome_name, config, sonnei_name_dict):
         else:
             lineage_out_dict['name'] = '-'
     
-    # add species info
-    lineage_out_dict['species'] = config['display_name']
+    # add conserved info
+    # if forcing, indicate this
+    if force:
+        lineage_out_dict['species'] = 'forced call'
+    else:
+        lineage_out_dict['species'] = config['display_name']
+    lineage_out_dict['scheme'] = config['scheme']
     lineage_out_dict['phylogroup_coverage'] = phylo_grp_percentage
     lineage_out_dict['species_coverage'] = spp_percentage
 
@@ -367,22 +388,50 @@ def main():
         genome_data = myk_result[genome_name]
         lineage_data = genome_data["phylogenetics"]
         
-        # Extract species call first
+        # Extract what species the genome has been called against
+        # by looking at the probe_sets values - if 'sonnei' then has been called
+        # against sonnei scheme, if 'flexneri' then flex scheme, if neither then
+        # this parser script shouldn't apply
+        scheme = determine_scheme(genome_data)
+        if not scheme:
+            # if we can't determine the scheme, then skip to next genome
+            print(f"Warning: Genotyping scheme for genome {genome_name} is not flexneri or sonnei, skipping.", file=sys.stderr)
+            continue
+        
+        # Now that we know we're typing either a supposed sonnei or flexneri, extract the phylogroup and species calls Mykrobe made
         spp_data = lineage_data['species']
         spp_call = list(spp_data.keys())[0]
-        
-        # Auto-detect species from Mykrobe output
-        spp_config = get_paramters_for_spp(spp_call)
-        
-        lineage_info, spp_call_returned = extract_lineage_info(lineage_data, genome_name, spp_config, sonnei_name_dict)
-        genome_qrdr_info = extract_qrdr_info(genome_data, genome_name, spp_call_returned, spp_config)
-        combined_info = {**lineage_info, **genome_qrdr_info}
-        results_data.append(combined_info)
+        phylo_grp_data = lineage_data['phylo_group']
+        phylo_grp_call = list(phylo_grp_data.keys())[0]
 
-    
+        # if our phylogroup isn't Ecoli/Shigella, then skip extracting any lineage info
+        # only do this if we're not 'forcing' a call
+        if phylo_grp_call != 'Ecoli_Shigella' and not args.force:
+            out_dict = phylogroup_no_match(phylo_grp_call, phylo_grp_data, genome_name, scheme)
+            qrdr_no_call = extract_qrdr_info(genome_data, genome_name, spp_call, None)
+            out_dict.update(qrdr_no_call)
+            results_data.append(out_dict)
+            continue
+        else:
+            # Grab the correct parameters for this sceheme
+            spp_config = get_paramters_for_spp(spp_call)
+            if spp_config is None and args.force:
+                # if we're forcing, then set config to whatever the scheme is
+                if scheme == 'sonnei':
+                    spp_config = get_paramters_for_spp('Shigella_sonnei')
+                elif scheme == 'flexneri':
+                    spp_config = get_paramters_for_spp('Shigella_flexneri')
+                else:
+                    raise
+            
+            lineage_info, spp_call_returned = extract_lineage_info(lineage_data, genome_name, spp_config, sonnei_name_dict, args.force)
+            genome_qrdr_info = extract_qrdr_info(genome_data, genome_name, spp_call_returned, spp_config)
+            combined_info = {**lineage_info, **genome_qrdr_info}
+            results_data.append(combined_info)
+
     # Define the columns
     base_columns = [
-        "genome", "species", "final genotype", "name", "confidence", 
+        "genome", "species", "final genotype", "name", "scheme", "confidence", 
         "num QRDR"
     ]
 
