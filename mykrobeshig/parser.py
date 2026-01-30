@@ -364,7 +364,7 @@ def main():
     # create sonnei_name_dict, key=mykrobe lineage name, value=sonnei human readable name
     # only used for sonnei genotypes
     sonnei_name_dict = {}
-    with resources.open_text('mykroshig.data', 'alleles_sonnei.txt') as lineage_names:
+    with resources.open_text('mykrobeshig.data', 'alleles_sonnei.txt') as lineage_names:
         for line in lineage_names:
             fields = line.strip().split('\t')
             sonnei_name_dict[fields[4]] = fields[3]
