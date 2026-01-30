@@ -33,7 +33,7 @@ def get_arguments():
     return parser.parse_args()
 
 
-def get_paramters_for_spp(spp_call):
+def get_paramters_for_spp(spp_call, scheme):
     """
     Determine the appropriate parameters based on the species call from Mykrobe.
     If it's not one of these species, return None (will be processed as "Unknown")
@@ -59,7 +59,11 @@ def get_paramters_for_spp(spp_call):
         return species_config[spp_call]
     else:
         # If unknown or unrecognized species
-        return None
+        # return the value for the scheme
+        for key, value in species_config.items():
+            if value['scheme'] == scheme:
+                return value
+        #return None
 
 
 def determine_scheme(genome_data):
@@ -414,7 +418,7 @@ def main():
             continue
         else:
             # Grab the correct parameters for this sceheme
-            spp_config = get_paramters_for_spp(spp_call)
+            spp_config = get_paramters_for_spp(spp_call, scheme)
             if spp_config is None and args.force:
                 # if we're forcing, then set config to whatever the scheme is
                 if scheme == 'sonnei':
