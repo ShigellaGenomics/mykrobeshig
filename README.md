@@ -1,4 +1,4 @@
-# MykroShig
+# MykrobeShig
 
 This package parses Mykrobe predict results for *Shigella sonnei* and *Shigella flexneri*. It is adapted from the [sonneityping tool](https://github.com/katholt/sonneityping) originally developed for *Shigella sonnei*.
 
@@ -14,14 +14,14 @@ This package parses the JSON files output by Mykrobe (one per genome) and tabula
 
 ```bash
 git clone https://github.com/ShigellaGenomics/mykroshig.git
-cd mykroshig
+cd mykrobeshig
 pip install .
 ```
 
 ## Quickstart
 
 ```bash
-mykroshig --jsons mykrobe_results/*.json --prefix results_mykrobe_parsed
+mykrobeshig --jsons mykrobe_results/*.json --prefix results_mykrobe_parsed
 ```
 
 ## Usage (including running Mykrobe)
@@ -50,9 +50,9 @@ mykrobe predict --sample SAMPLE_NAME --species flexneri --format json --out SAMP
 * For Oxford Nanopore reads, add the flag `--ont` to your command.
 * For full details on all Mykrobe options, please see [the Mykrobe documentation](https://github.com/Mykrobe-tools/mykrobe).
 
-### Parse Mykrobe output with MykroShig
+### Parse Mykrobe output with MykrobeShig
 
-Once Mykrobe results are generated, use `mykroshig` to parse them. MykroShig automatically detects whether samples have been typed using the *S. flexneri* or *S. sonnei* schemes from the Mykrobe output.
+Once Mykrobe results are generated, use `mykrobeshig` to parse them. MykrobeShig automatically detects whether samples have been typed using the *S. flexneri* or *S. sonnei* schemes from the Mykrobe output.
 
 **Arguments**
 * `--jsons`: JSON files output from `mykrobe predict`
@@ -60,7 +60,7 @@ Once Mykrobe results are generated, use `mykroshig` to parse them. MykroShig aut
 * `--force`: If you used `--force` with your Mykrobe call, to enforce a genotype call even when the species and phylogroup calls are not above the internal Mykrobe thresholds, you can force the parser to output this forced genotype for you. Otherwise, genomes with no phylogroup or no species Mykrobe calls will be skipped
 
 ```bash
-mykroshig --jsons mykrobe_results/*.json --prefix results_mykrobe_parsed
+mykrobeshig --jsons mykrobe_results/*.json --prefix results_mykrobe_parsed
 ```
 
 ## Output
