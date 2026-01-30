@@ -1,4 +1,4 @@
-"""Setup configuration for mykroshig package"""
+"""Setup configuration for mykrobeshig package"""
 
 from setuptools import setup, find_packages
 
@@ -6,17 +6,17 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="mykroshig",
+    name="mykrobeshig",
     version="1.0.0",
     author="Jane Hawkey",
     author_email="jane.hawkey@monash.edu",
     description="Parse Mykrobe predict results for Shigella sonnei and Shigella flexneri",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/ShigellaGenomics/mykroshig",
+    url="https://github.com/ShigellaGenomics/mykrobeshig",
     packages=find_packages(),
     package_data={
-        "mykroshig": ["data/*.txt"],
+        "mykrobeshig": ["data/*.txt"],
     },
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -32,7 +32,7 @@ setup(
     python_requires=">=3.7",
     entry_points={
         "console_scripts": [
-            "mykroshig=mykroshig.parser:main",
+            "mykrobeshig=mykrobeshig.parser:main",
         ],
     },
 )

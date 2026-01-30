@@ -1,5 +1,5 @@
 """
-mykroshig: Parse Mykrobe predict results for Shigella species
+mykrobeshig: Parse Mykrobe predict results for Shigella sonnei and Shigella flexneri species
 
 A Python package for parsing JSON output from Mykrobe predict for 
 Shigella sonnei and Shigella flexneri, producing tabulated genotyping results.
