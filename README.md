@@ -1,6 +1,6 @@
 # MykrobeShig
 
-This package parses Mykrobe predict results for *Shigella sonnei* and *Shigella flexneri*. It is adapted from the [sonneityping tool](https://github.com/katholt/sonneityping) originally developed for *Shigella sonnei*.
+This package parses Mykrobe predict results for *Shigella sonnei* and *Shigella flexneri*. It is adapted from the [sonneityping tool](https://github.com/ShigellaGenomics/sonneityping) originally developed for *Shigella sonnei*.
 
 Mykrobe v0.9.0+ can identify input genomes and assign them to hierarchical genotypes based on detection of single nucleotide variants (SNVs), and report known mutations in the quinolone-resistance determining region (QRDR) of genes *gyrA* and *parC*.
 
