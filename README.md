@@ -13,7 +13,7 @@ This package parses the JSON files output by Mykrobe (one per genome) and tabula
 ## Installation
 
 ```bash
-git clone https://github.com/ShigellaGenomics/mykroshig.git
+git clone https://github.com/ShigellaGenomics/mykrobeshig.git
 cd mykrobeshig
 pip install .
 ```
@@ -28,6 +28,8 @@ mykrobeshig --jsons mykrobe_results/*.json --prefix results_mykrobe_parsed
 
 ### Install Mykrobe
 First, install Mykrobe (v0.9.0+) as per the instructions on the [Mykrobe github](https://github.com/Mykrobe-tools/mykrobe).
+
+**Note:** Mykrobe2 has now [been released](https://github.com/Mykrobe-tools/mykrobe2). This parser script will work with Mykrobe2, simply update the commands below with `mykrobe2` after installing.
 
 Once Mykrobe is installed, make sure you run the following two commands to ensure you have the most up-to-date panels for genotyping:
 ```bash
